@@ -247,7 +247,7 @@ class TestCombinedStrategy:
         result = strategy.generate_signal(enriched_df_up, "BTC/USDT:USDT")
         assert "all_signals" in result.meta
 
-    def test_min_confluence_zero_always_neutral(self, enriched_df_up):
+    def test_high_confluence_threshold_always_neutral(self, enriched_df_up):
         """With min_confluence=999 and only 3 strategies it should never agree."""
         cfg = dict(_DEFAULT_CFG)
         cfg["strategies"] = dict(cfg["strategies"])

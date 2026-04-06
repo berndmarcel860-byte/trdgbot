@@ -78,13 +78,11 @@ class DCAFibonacciStrategy(BaseStrategy):
         # ── Long: price retracing down from swing high ─────────────────────
         # Check if current price is AT or BELOW the 0.618 retracement level
         # (i.e. a meaningful pullback has occurred)
-        level_618 = fib_prices.get(0.618, swing_low)
         price_retraced_long = close <= fib_prices.get(0.382, swing_high)
         rsi_ok_long = rsi >= rsi_filter_long
         micro_reversal_long = close > close_prev
 
-        level_382 = fib_prices.get(0.382, swing_low)
-        price_retraced_short = close >= level_382
+        price_retraced_short = close >= fib_prices.get(0.382, swing_low)
         rsi_ok_short = rsi <= rsi_filter_short
         micro_reversal_short = close < close_prev
 

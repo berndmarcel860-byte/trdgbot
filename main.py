@@ -37,7 +37,7 @@ logger = get_logger(__name__)
 _RUNNING = True
 
 
-def _shutdown_handler(signum: int, frame: Any) -> None:  # noqa: ANN001
+def _shutdown_handler(signum: int, frame: Any) -> None:
     global _RUNNING
     logger.info("Shutdown signal received – stopping after current cycle…")
     _RUNNING = False
