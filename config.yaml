@@ -97,3 +97,12 @@ find_positions:
   leverage: 20                    # displayed leverage in trade cards (×20 Cross)
   scan_interval_seconds: 300      # how often to look for new signals (5 min)
   monitor_interval_seconds: 30    # how often to check entry / TP / SL hits
+
+# ── Higher-timeframe market bias filter ────────────────────────────────────
+market_bias:
+  enabled: true           # set false to disable bias detection entirely
+  ema_fast: 55            # fast EMA period (must exist in add_all_indicators)
+  ema_slow: 200           # slow EMA period (must exist in add_all_indicators)
+  adx_threshold: 20       # minimum ADX required to include the DI+/DI- vote
+  bullish_threshold: 3    # minimum score (out of 5) to label market long/short
+  require_match: true     # when true, signals opposite to the HTF bias are filtered

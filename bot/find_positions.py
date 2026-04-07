@@ -31,6 +31,7 @@ from typing import Any, Dict, List, Optional
 from bot.exchange import ExchangeClient
 from bot.indicators import add_all_indicators, prepare_ohlcv
 from bot.logger import get_logger
+from bot.market_bias import MarketBiasDetector
 from bot.risk_manager import RiskManager, TradeSetup
 from bot.strategies.base import Signal
 from bot.strategies.combined import CombinedStrategy
@@ -112,6 +113,7 @@ class PositionFinder:
         self._cfg = cfg
         self._notifier = notifier
         self._strategy = CombinedStrategy(cfg)
+        self._bias = MarketBiasDetector(cfg)
         # Use a large equity so position-size rejections don't suppress signals
         self._risk = RiskManager(cfg, initial_equity=1_000_000.0)
         self._active: Dict[str, ActiveSignal] = {}
@@ -236,6 +238,28 @@ class PositionFinder:
     def _process_symbol(self, symbol: str) -> None:
         """Evaluate *symbol* and send a Telegram trade card if actionable."""
         primary_tf = self._cfg.get("timeframes", {}).get("primary", "1h")
+        htf = self._cfg.get("timeframes", {}).get("htf", "4h")
+
+        # ── Step 1: detect higher-timeframe market bias ──────────────────────
+        bias = "neutral"
+        if self._bias.enabled:
+            try:
+                raw_htf = self._exchange.fetch_ohlcv(symbol, timeframe=htf, limit=300)
+                if raw_htf and len(raw_htf) >= 50:
+                    df_htf = prepare_ohlcv(raw_htf)
+                    df_htf = add_all_indicators(df_htf, self._cfg)
+                    bias = self._bias.detect(df_htf)
+                    logger.debug("Market bias for %s on %s: %s", symbol, htf, bias)
+                else:
+                    logger.debug(
+                        "Insufficient HTF data for %s (%d candles) – bias=neutral",
+                        symbol,
+                        len(raw_htf or []),
+                    )
+            except Exception as exc:
+                logger.debug("HTF fetch failed for %s: %s – bias=neutral", symbol, exc)
+
+        # ── Step 2: fetch primary-timeframe OHLCV ────────────────────────────
         try:
             raw = self._exchange.fetch_ohlcv(symbol, timeframe=primary_tf, limit=500)
         except Exception as exc:
@@ -251,8 +275,19 @@ class PositionFinder:
         df = prepare_ohlcv(raw)
         df = add_all_indicators(df, self._cfg)
 
+        # ── Step 3: generate signal ──────────────────────────────────────────
         sig: Signal = self._strategy.generate_signal(df, symbol)
         if not sig.is_actionable():
+            return
+
+        # ── Step 4: apply market-bias filter ────────────────────────────────
+        if self._bias.require_match and bias != "neutral" and sig.direction != bias:
+            logger.debug(
+                "Signal for %s filtered: direction=%s conflicts with market_bias=%s",
+                symbol,
+                sig.direction,
+                bias,
+            )
             return
 
         latest_price = float(df["close"].iloc[-1])
@@ -271,7 +306,7 @@ class PositionFinder:
 
         entries = self._build_entries(sig, setup)
         avg_entry = _weighted_avg([e.price for e in entries], [e.weight for e in entries])
-        text = self._format_message(symbol, sig.direction, setup, entries, avg_entry)
+        text = self._format_message(symbol, sig.direction, setup, entries, avg_entry, bias=bias)
         msg_id = self._notifier.send_message(text)
 
         if msg_id is None:
@@ -397,6 +432,7 @@ class PositionFinder:
         setup: TradeSetup,
         entries: List[EntryLevel],
         avg_entry: float,
+        bias: str = "neutral",
     ) -> str:
         """Build the Telegram HTML trade card."""
         dir_emoji = "📈" if direction == "long" else "📉"
@@ -408,11 +444,15 @@ class PositionFinder:
 
         _NUMERALS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
 
+        bias_emoji = {"long": "🟢", "short": "🔴"}.get(bias, "⚪")
+        bias_label = {"long": "BULLISH", "short": "BEARISH"}.get(bias, "NEUTRAL")
+
         lines = [
             f"🔍 <b>{display}</b>",
             "",
             f"{dir_emoji} <b>Direction:</b> {dir_label}",
             f"⚡ <b>Leverage:</b> ×{self._leverage} Cross",
+            f"🧭 <b>Market Bias (HTF):</b> {bias_emoji} {bias_label}",
             "",
             "📍 <b>Entries (DCA):</b>",
         ]
