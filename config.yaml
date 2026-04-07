@@ -85,3 +85,15 @@ indicators:
 bot:
   poll_interval_seconds: 60   # how often to refresh market data
   dry_run: true               # true = log signals only, do NOT place real orders
+
+# ── Telegram notifications ─────────────────────────────────────────────────
+telegram:
+  bot_token: ""      # set via TELEGRAM_BOT_TOKEN env var
+  channel_id: ""     # set via TELEGRAM_CHANNEL_ID env var (e.g. @mychannel or -100…)
+
+# ── Position-finder settings (python main.py --find-positions) ─────────────
+find_positions:
+  max_coins: 20                   # scan up to this many top-volume USDT perp symbols
+  leverage: 20                    # displayed leverage in trade cards (×20 Cross)
+  scan_interval_seconds: 300      # how often to look for new signals (5 min)
+  monitor_interval_seconds: 30    # how often to check entry / TP / SL hits

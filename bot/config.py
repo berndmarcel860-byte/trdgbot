@@ -47,6 +47,13 @@ def load_config(config_path: str | Path | None = None) -> Dict[str, Any]:
     if os.environ.get("EXCHANGE_PASSPHRASE"):
         exchange_cfg["passphrase"] = os.environ["EXCHANGE_PASSPHRASE"]
 
+    # Inject Telegram credentials from environment variables
+    telegram_cfg: Dict[str, Any] = cfg.setdefault("telegram", {})
+    if os.environ.get("TELEGRAM_BOT_TOKEN"):
+        telegram_cfg["bot_token"] = os.environ["TELEGRAM_BOT_TOKEN"]
+    if os.environ.get("TELEGRAM_CHANNEL_ID"):
+        telegram_cfg["channel_id"] = os.environ["TELEGRAM_CHANNEL_ID"]
+
     return cfg
 
 

@@ -31,7 +31,6 @@ from bot.logger import get_logger
 from bot.order_manager import OrderManager
 from bot.risk_manager import RiskManager
 from bot.strategies.combined import CombinedStrategy
-
 logger = get_logger(__name__)
 
 _RUNNING = True
@@ -127,8 +126,7 @@ def _is_new_day(last_reset_date: str) -> bool:
 
 # ── Main loop ──────────────────────────────────────────────────────────────
 
-def run(cfg: Dict[str, Any]) -> None:
-    """Start the main trading loop.
+def run(cfg: Dict[str, Any]) -> None:    """Start the main trading loop.
 
     Args:
         cfg: Fully loaded configuration dictionary.
@@ -184,6 +182,38 @@ def run(cfg: Dict[str, Any]) -> None:
     logger.info("Bot stopped.")
 
 
+# ── Find-positions mode ────────────────────────────────────────────────────
+
+def run_find_positions(cfg: Dict[str, Any]) -> None:
+    """Start the position-finder / signal-scanner mode.
+
+    Validates that Telegram credentials are present, then starts
+    :class:`~bot.find_positions.PositionFinder` in its blocking event loop.
+
+    Args:
+        cfg: Fully loaded configuration dictionary.
+    """
+    from bot.find_positions import PositionFinder
+    from bot.telegram_notifier import TelegramNotifier
+
+    telegram_cfg = cfg.get("telegram", {})
+    token: str = telegram_cfg.get("bot_token", "")
+    channel_id: str = telegram_cfg.get("channel_id", "")
+
+    if not token or not channel_id:
+        logger.error(
+            "Telegram credentials are missing. "
+            "Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHANNEL_ID in your .env file."
+        )
+        sys.exit(1)
+
+    dry_run = cfg.get("bot", {}).get("dry_run", True)
+    exchange = ExchangeClient(cfg, dry_run=dry_run)
+    notifier = TelegramNotifier(token, channel_id)
+    finder = PositionFinder(exchange, cfg, notifier)
+    finder.run()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="trdgbot – crypto futures trading bot")
     parser.add_argument(
@@ -195,6 +225,16 @@ def main() -> None:
         "--live",
         action="store_true",
         help="Enable live trading (overrides dry_run: true in config)",
+    )
+    parser.add_argument(
+        "--find-positions",
+        action="store_true",
+        dest="find_positions",
+        help=(
+            "Run position-finder mode: scan top coins, send trade signals to "
+            "Telegram, and monitor entries / TP / SL (requires TELEGRAM_BOT_TOKEN "
+            "and TELEGRAM_CHANNEL_ID in .env)"
+        ),
     )
     args = parser.parse_args()
 
@@ -208,7 +248,10 @@ def main() -> None:
         cfg.setdefault("bot", {})["dry_run"] = False
         logger.warning("⚠  LIVE TRADING MODE – real orders will be placed!")
 
-    run(cfg)
+    if args.find_positions:
+        run_find_positions(cfg)
+    else:
+        run(cfg)
 
 
 if __name__ == "__main__":

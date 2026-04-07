@@ -91,6 +91,29 @@ class ExchangeClient:
         """Return open futures positions."""
         return self._exchange.fetch_positions(symbols)
 
+    def load_markets(self) -> Dict[str, Any]:
+        """Load and return the full market map from the exchange.
+
+        Returns:
+            Mapping of ``{symbol: market_dict}`` as returned by ccxt.
+        """
+        return self._exchange.load_markets()
+
+    def fetch_tickers(
+        self,
+        symbols: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Fetch tickers for the given symbols (or all if *symbols* is ``None``).
+
+        Args:
+            symbols: Optional list of symbols to fetch.  When ``None`` the
+                     exchange returns tickers for every listed market.
+
+        Returns:
+            Mapping of ``{symbol: ticker_dict}``.
+        """
+        return self._exchange.fetch_tickers(symbols)
+
     # ── Order management ───────────────────────────────────────────────────
 
     def set_leverage(self, symbol: str, leverage: Optional[int] = None) -> None:
