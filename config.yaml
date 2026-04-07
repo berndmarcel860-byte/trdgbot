@@ -16,7 +16,7 @@ symbols:
 
 # Timeframes used by strategies
 timeframes:
-  primary: 1h          # main signal timeframe
+  primary: 1h          # main signal timeframe (override with PRIMARY_TIMEFRAME env var)
   htf: 4h              # higher-timeframe trend filter
   ltf: 15m             # lower-timeframe entry precision
 

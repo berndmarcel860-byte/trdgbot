@@ -54,6 +54,11 @@ def load_config(config_path: str | Path | None = None) -> Dict[str, Any]:
     if os.environ.get("TELEGRAM_CHANNEL_ID"):
         telegram_cfg["channel_id"] = os.environ["TELEGRAM_CHANNEL_ID"]
 
+    # Allow overriding the primary trading timeframe via environment variable.
+    # Valid values mirror ccxt timeframe strings: 1m, 5m, 15m, 30m, 1h, 4h, 1d …
+    if os.environ.get("PRIMARY_TIMEFRAME"):
+        cfg.setdefault("timeframes", {})["primary"] = os.environ["PRIMARY_TIMEFRAME"]
+
     return cfg
 
 
