@@ -41,7 +41,7 @@ strategies:
     - dca_fibonacci
 
   # Minimum number of strategies that must agree (consensus filter)
-  min_confluence: 1
+  min_confluence: 2
 
   pullback:
     fast_ema: 21
@@ -94,9 +94,10 @@ telegram:
 # ── Position-finder settings (python main.py --find-positions) ─────────────
 find_positions:
   max_coins: 20                   # scan up to this many top-volume USDT perp symbols
-  leverage: 20                    # displayed leverage in trade cards (×20 Cross)
+  leverage: 10                    # displayed leverage in trade cards (×10 Cross)
   scan_interval_seconds: 300      # how often to look for new signals (5 min)
   monitor_interval_seconds: 30    # how often to check entry / TP / SL hits
+  state_file: find_positions_state.json  # persist active signals across restarts (set "" to disable)
 
 # ── Higher-timeframe market bias filter ────────────────────────────────────
 market_bias:

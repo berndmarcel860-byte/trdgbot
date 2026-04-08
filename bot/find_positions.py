@@ -23,6 +23,9 @@ Behaviour
 
 from __future__ import annotations
 
+import dataclasses
+import json
+import os
 import signal as _signal
 import time
 from dataclasses import dataclass, field
@@ -123,6 +126,9 @@ class PositionFinder:
         self._max_coins: int = int(fp_cfg.get("max_coins", 20))
         self._scan_interval: int = int(fp_cfg.get("scan_interval_seconds", 300))
         self._monitor_interval: int = int(fp_cfg.get("monitor_interval_seconds", 30))
+        self._state_file: str = fp_cfg.get("state_file", "")
+
+        self._load_state()
 
     # ── Public API ──────────────────────────────────────────────────────────
 
@@ -142,6 +148,7 @@ class PositionFinder:
                 )
                 continue
             self._process_symbol(symbol)
+        self._save_state()
 
     def monitor(self) -> None:
         """Check active signals against current prices and reply on hits."""
@@ -158,6 +165,7 @@ class PositionFinder:
                 self._check_hits(symbol, sig, price)
             except Exception as exc:
                 logger.warning("Monitor error for %s: %s", symbol, exc)
+        self._save_state()
 
     def run(self) -> None:
         """Start the main event loop.
@@ -424,6 +432,73 @@ class PositionFinder:
         if direction == "short":
             raw = -raw
         return raw * self._leverage * 100
+
+    # ── State persistence ───────────────────────────────────────────────────
+
+    def _save_state(self) -> None:
+        """Persist the active-signal dict to *state_file* as JSON.
+
+        Uses an atomic write (temp file → rename) so a crash mid-write never
+        leaves a corrupt state file.  A no-op when *state_file* is empty.
+        """
+        if not self._state_file:
+            return
+        try:
+            data = {
+                symbol: {
+                    "symbol": sig.symbol,
+                    "setup": dataclasses.asdict(sig.setup),
+                    "entries": [dataclasses.asdict(e) for e in sig.entries],
+                    "message_id": sig.message_id,
+                    "direction": sig.direction,
+                    "avg_entry": sig.avg_entry,
+                    "sl_hit": sig.sl_hit,
+                    "tp_hit": sig.tp_hit,
+                }
+                for symbol, sig in self._active.items()
+            }
+            tmp_file = self._state_file + ".tmp"
+            with open(tmp_file, "w") as fh:
+                json.dump(data, fh, indent=2)
+            os.replace(tmp_file, self._state_file)
+            logger.debug(
+                "State saved to %s (%d active signals)", self._state_file, len(data)
+            )
+        except Exception as exc:
+            logger.warning("Failed to save state: %s", exc)
+
+    def _load_state(self) -> None:
+        """Restore active signals from *state_file* if it exists.
+
+        Silently ignores a missing file.  Logs a warning and leaves
+        *_active* empty on any other error (e.g. corrupt JSON).
+        """
+        if not self._state_file or not os.path.exists(self._state_file):
+            return
+        try:
+            with open(self._state_file) as fh:
+                data = json.load(fh)
+            for symbol, raw in data.items():
+                setup = TradeSetup(**raw["setup"])
+                entries = [EntryLevel(**e) for e in raw["entries"]]
+                sig = ActiveSignal(
+                    symbol=raw["symbol"],
+                    setup=setup,
+                    entries=entries,
+                    message_id=raw["message_id"],
+                    direction=raw["direction"],
+                    avg_entry=raw["avg_entry"],
+                    sl_hit=raw.get("sl_hit", False),
+                    tp_hit=raw.get("tp_hit", False),
+                )
+                self._active[symbol] = sig
+            logger.info(
+                "State loaded from %s (%d active signals)",
+                self._state_file,
+                len(self._active),
+            )
+        except Exception as exc:
+            logger.warning("Failed to load state from %s: %s", self._state_file, exc)
 
     def _format_message(
         self,

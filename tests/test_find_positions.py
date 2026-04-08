@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import copy
+import json
+import os
 from typing import Any, Dict, List, Optional
 from unittest.mock import MagicMock, patch
 
@@ -415,3 +418,117 @@ class TestFormatMessage:
         )
         assert "SHORT" in msg
         assert "ETHUSDT" in msg
+
+
+# ── State persistence ────────────────────────────────────────────────────────
+
+
+def _make_finder_with_state(state_file: str) -> PositionFinder:
+    """Return a PositionFinder wired to *state_file* for persistence tests."""
+    cfg = copy.deepcopy(_BASE_CFG)
+    cfg["find_positions"]["state_file"] = state_file
+    return _make_finder(cfg=cfg)
+
+
+class TestStatePersistence:
+    def test_save_creates_json_file(self, tmp_path):
+        state_file = str(tmp_path / "state.json")
+        finder = _make_finder_with_state(state_file)
+        finder._active["BTC/USDT:USDT"] = _make_active()
+        finder._save_state()
+        assert os.path.exists(state_file)
+        with open(state_file) as fh:
+            data = json.load(fh)
+        assert "BTC/USDT:USDT" in data
+
+    def test_save_persists_all_fields(self, tmp_path):
+        state_file = str(tmp_path / "state.json")
+        finder = _make_finder_with_state(state_file)
+        sig = _make_active(entry=80_000.0, sl=78_000.0, tp=86_000.0, msg_id=99)
+        sig.entries[0].hit = True
+        sig.tp_hit = True
+        finder._active["BTC/USDT:USDT"] = sig
+        finder._save_state()
+        with open(state_file) as fh:
+            raw = json.load(fh)["BTC/USDT:USDT"]
+        assert raw["message_id"] == 99
+        assert raw["avg_entry"] == pytest.approx(80_000.0)
+        assert raw["tp_hit"] is True
+        assert raw["entries"][0]["hit"] is True
+
+    def test_load_restores_active_signals(self, tmp_path):
+        state_file = str(tmp_path / "state.json")
+        # Save via a first finder instance
+        finder1 = _make_finder_with_state(state_file)
+        finder1._active["BTC/USDT:USDT"] = _make_active(msg_id=7)
+        finder1._save_state()
+        # Restore via a second instance
+        finder2 = _make_finder_with_state(state_file)
+        assert "BTC/USDT:USDT" in finder2._active
+        restored = finder2._active["BTC/USDT:USDT"]
+        assert restored.symbol == "BTC/USDT:USDT"
+        assert restored.message_id == 7
+        assert restored.direction == "long"
+        assert restored.avg_entry == pytest.approx(80_000.0)
+
+    def test_load_restores_entry_hit_state(self, tmp_path):
+        state_file = str(tmp_path / "state.json")
+        finder1 = _make_finder_with_state(state_file)
+        sig = _make_active()
+        sig.entries[0].hit = True
+        finder1._active["BTC/USDT:USDT"] = sig
+        finder1._save_state()
+
+        finder2 = _make_finder_with_state(state_file)
+        assert finder2._active["BTC/USDT:USDT"].entries[0].hit is True
+
+    def test_load_restores_sl_hit_flag(self, tmp_path):
+        state_file = str(tmp_path / "state.json")
+        finder1 = _make_finder_with_state(state_file)
+        sig = _make_active()
+        sig.sl_hit = True
+        finder1._active["BTC/USDT:USDT"] = sig
+        finder1._save_state()
+
+        finder2 = _make_finder_with_state(state_file)
+        assert finder2._active["BTC/USDT:USDT"].sl_hit is True
+
+    def test_load_missing_file_leaves_active_empty(self, tmp_path):
+        state_file = str(tmp_path / "nonexistent.json")
+        finder = _make_finder_with_state(state_file)
+        assert finder._active == {}
+
+    def test_load_corrupt_file_leaves_active_empty(self, tmp_path):
+        state_file = str(tmp_path / "state.json")
+        with open(state_file, "w") as fh:
+            fh.write("NOT VALID JSON {{{")
+        finder = _make_finder_with_state(state_file)
+        assert finder._active == {}
+
+    def test_save_without_state_file_is_noop(self):
+        # _BASE_CFG has no state_file → _state_file == "" → save is a no-op
+        finder = _make_finder()
+        finder._active["BTC/USDT:USDT"] = _make_active()
+        finder._save_state()  # must not raise
+
+    def test_scan_saves_state_to_file(self, tmp_path):
+        state_file = str(tmp_path / "state.json")
+        finder = _make_finder_with_state(state_file)
+        finder._get_top_symbols = lambda: []  # type: ignore[method-assign]
+        finder.scan()
+        assert os.path.exists(state_file)
+
+    def test_monitor_saves_state_to_file(self, tmp_path):
+        state_file = str(tmp_path / "state.json")
+        finder = _make_finder_with_state(state_file)
+        finder.monitor()  # no active signals, just verifies save was called
+        assert os.path.exists(state_file)
+
+    def test_save_uses_atomic_write(self, tmp_path):
+        """Verify no partial .tmp file is left after a successful save."""
+        state_file = str(tmp_path / "state.json")
+        finder = _make_finder_with_state(state_file)
+        finder._active["BTC/USDT:USDT"] = _make_active()
+        finder._save_state()
+        assert not os.path.exists(state_file + ".tmp")
+        assert os.path.exists(state_file)
