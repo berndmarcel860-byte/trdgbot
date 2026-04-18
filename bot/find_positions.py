@@ -372,6 +372,9 @@ class PositionFinder:
         """Detect entry / TP / SL hits and send Telegram replies accordingly."""
         direction = sig.direction
 
+        # Track whether any entry has been filled (before or during this tick)
+        any_entry_filled = any(e.hit for e in sig.entries)
+
         # ── Entry levels ───────────────────────────────────────────────────
         for idx, entry in enumerate(sig.entries):
             if entry.hit:
@@ -381,6 +384,7 @@ class PositionFinder:
             )
             if crossed:
                 entry.hit = True
+                any_entry_filled = True
                 text = (
                     f"✅ <b>Entry #{idx + 1} reached</b> "
                     f"@ <b>{_fmt_price(entry.price)}</b>"
@@ -389,6 +393,26 @@ class PositionFinder:
                 logger.info(
                     "Entry #%d hit for %s @ %.6f", idx + 1, symbol, entry.price
                 )
+
+        # ── No entry filled yet: only watch for SL invalidation ───────────
+        if not any_entry_filled:
+            if not sig.sl_hit:
+                sl_crossed = (
+                    price <= sig.setup.stop_loss
+                    if direction == "long"
+                    else price >= sig.setup.stop_loss
+                )
+                if sl_crossed:
+                    sig.sl_hit = True
+                    text = (
+                        "⚠️ <b>Signal Expired</b>\n"
+                        "SL level was reached before any entry was filled."
+                    )
+                    self._notifier.reply_to(sig.message_id, text)
+                    logger.info(
+                        "Signal expired (no entry filled) for %s", symbol
+                    )
+            return  # TP / trade-SL only apply after an entry is filled
 
         # ── Take-profit ────────────────────────────────────────────────────
         if not sig.tp_hit:

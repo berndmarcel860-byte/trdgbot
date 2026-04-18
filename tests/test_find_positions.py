@@ -344,7 +344,67 @@ class TestPositionFinderCheckHits:
         # No entry reply expected since it was already hit; TP/SL not crossed
         notifier.reply_to.assert_not_called()
 
-    def test_sl_hit_blocks_further_monitoring_iteration(self):
+    def test_sl_crossed_without_entry_sends_expired(self):
+        """Guard: SL crossed before any entry filled → 'Expired', not 'Stop Loss'.
+
+        Uses an intentionally inverted SL (above entry for a long) so the guard
+        path fires: price drops to 84k, which is ≤ SL (85k) but NOT ≤ entry (80k).
+        """
+        notifier = MagicMock(spec=TelegramNotifier)
+        finder = _make_finder(notifier=notifier)
+        # SL deliberately above entry to force the "no entry before SL" path.
+        sig = _make_active(direction="long", entry=80_000.0, sl=85_000.0, tp=90_000.0)
+        assert sig.entries[0].hit is False
+        finder._active["BTC/USDT:USDT"] = sig
+
+        # 84k ≤ 85k (SL crossed) but 84k > 80k (entry not crossed for long)
+        finder._check_hits("BTC/USDT:USDT", sig, 84_000.0)
+        notifier.reply_to.assert_called_once()
+        text = notifier.reply_to.call_args[0][1]
+        assert "Expired" in text
+        assert "Stop Loss" not in text
+        assert sig.sl_hit is True
+        assert sig.tp_hit is False  # TP must not fire when no entry was filled
+
+    def test_short_sl_crossed_without_entry_sends_expired(self):
+        """Guard fires for short direction: inverted SL (below entry) forces the path."""
+        notifier = MagicMock(spec=TelegramNotifier)
+        finder = _make_finder(notifier=notifier)
+        # SL below entry for a short → inverted (invalid) to trigger the guard.
+        sig = _make_active(
+            direction="short", entry=82_000.0, sl=78_000.0, tp=70_000.0, msg_id=5
+        )
+        assert sig.entries[0].hit is False
+        finder._active["BTC/USDT:USDT"] = sig
+
+        # 79k ≥ 78k (SL crossed for short) but 79k < 82k (entry not hit for short)
+        finder._check_hits("BTC/USDT:USDT", sig, 79_000.0)
+        notifier.reply_to.assert_called_once()
+        text = notifier.reply_to.call_args[0][1]
+        assert "Expired" in text
+        assert sig.sl_hit is True
+
+    def test_tp_not_triggered_without_entry_hit(self):
+        """TP must not fire until at least one entry has been filled."""
+        notifier = MagicMock(spec=TelegramNotifier)
+        finder = _make_finder(notifier=notifier)
+        # Inverted SL below entry for a short so neither entry nor SL fires at
+        # this price, letting us verify TP is also suppressed.
+        sig = _make_active(
+            direction="short", entry=82_000.0, sl=78_000.0, tp=70_000.0
+        )
+        assert sig.entries[0].hit is False
+        finder._active["BTC/USDT:USDT"] = sig
+
+        # 65k < TP (70k for short: price ≤ tp would hit TP if entry was filled)
+        # but 65k < SL (78k, 65k ≥ 78k? NO → SL not crossed) and 65k < entry
+        # (65k ≥ 82k? NO → entry not hit) → guard returns early, TP not checked.
+        finder._check_hits("BTC/USDT:USDT", sig, 65_000.0)
+        assert sig.tp_hit is False
+        assert sig.sl_hit is False
+        notifier.reply_to.assert_not_called()
+
+
         notifier = MagicMock(spec=TelegramNotifier)
         finder = _make_finder(notifier=notifier)
         sig = _make_active(direction="long", entry=80_000.0, sl=78_000.0, tp=86_000.0)

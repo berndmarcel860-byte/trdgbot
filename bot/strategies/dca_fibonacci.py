@@ -51,8 +51,8 @@ class DCAFibonacciStrategy(BaseStrategy):
         fib_levels_cfg: List[float] = cfg.get("fib_levels", [0.382, 0.5, 0.618, 0.786])
         fib_weights: List[float] = cfg.get("fib_weights", [0.4, 0.3, 0.2, 0.1])
         swing_lookback = cfg.get("swing_lookback", 50)
-        rsi_filter_long = cfg.get("rsi_filter_long", 50)
-        rsi_filter_short = cfg.get("rsi_filter_short", 50)
+        rsi_filter_long = cfg.get("rsi_filter_long", 35)
+        rsi_filter_short = cfg.get("rsi_filter_short", 65)
 
         required = ["close", "rsi", "atr"]
         if df.empty or len(df) < swing_lookback or not all(c in df.columns for c in required):
@@ -125,14 +125,18 @@ class DCAFibonacciStrategy(BaseStrategy):
             )
 
         if price_retraced_short and rsi_ok_short and micro_reversal_short:
+            # Build short DCA layers ABOVE close (price needs to rally to each
+            # level before the position is filled).  Entries are placed at
+            # fibonacci fractions of the distance from close to swing_high.
+            gap_to_high = swing_high - close
             dca_layers = [
                 {
                     "level": lvl,
-                    "price": fib_prices[lvl],
+                    "price": close + lvl * gap_to_high,
                     "weight": fib_weights[i] if i < len(fib_weights) else 0.1,
                 }
                 for i, lvl in enumerate(fib_levels_cfg)
-                if fib_prices[lvl] >= close
+                if gap_to_high > 0 and (close + lvl * gap_to_high) < swing_high
             ]
             if not dca_layers:
                 return Signal(direction="neutral", strategy=self.name, symbol=symbol,
@@ -140,7 +144,7 @@ class DCAFibonacciStrategy(BaseStrategy):
 
             entry = dca_layers[0]["price"]
             sl = swing_high + atr * atr_sl
-            tp = close - (swing_high - close) * atr_tp / atr_sl
+            tp = close - (close - swing_low) * atr_tp / atr_sl
             confidence = min(0.5 + len(dca_layers) * 0.1, 1.0)
 
             return Signal(

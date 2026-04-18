@@ -27,7 +27,7 @@ risk:
   max_daily_drawdown: 0.05      # halt trading if daily DD exceeds 5 %
   max_total_drawdown: 0.15      # halt trading if total DD exceeds 15 %
   reward_risk_ratio: 2.5        # minimum R:R required to enter
-  atr_sl_multiplier: 1.5        # stop-loss = entry ± ATR × multiplier
+  atr_sl_multiplier: 2.0        # stop-loss = entry ± ATR × multiplier
   atr_tp_multiplier: 3.0        # take-profit = entry ± ATR × multiplier (overridden by R:R)
   trailing_stop_activation: 1.5 # activate trailing stop after price moves 1.5×ATR in profit
   trailing_stop_distance: 1.0   # trailing stop distance in ATR units
@@ -68,8 +68,8 @@ strategies:
     fib_weights: [0.4, 0.3, 0.2, 0.1]
     swing_lookback: 50    # candles to look back for swing high/low
     rsi_period: 14
-    rsi_filter_long: 50   # RSI must be above this for long DCA entries
-    rsi_filter_short: 50  # RSI must be below this for short DCA entries
+    rsi_filter_long: 35   # RSI must be above this for long DCA entries
+    rsi_filter_short: 65  # RSI must be below this for short DCA entries
 
 # ── Indicator Defaults ─────────────────────────────────────────────────────
 indicators:
