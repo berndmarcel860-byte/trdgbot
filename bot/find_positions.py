@@ -186,6 +186,12 @@ class PositionFinder:
             self._scan_interval,
             self._monitor_interval,
         )
+        self._notifier.send_message(
+            f"🤖 <b>Position finder started</b>\n"
+            f"📊 Scanning top <b>{self._max_coins}</b> coins"
+            f" | Leverage ×{self._leverage} Cross"
+            f" | Scan every {self._scan_interval}s"
+        )
 
         while _RUNNING:
             now = time.monotonic()
