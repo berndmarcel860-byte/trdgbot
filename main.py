@@ -126,7 +126,8 @@ def _is_new_day(last_reset_date: str) -> bool:
 
 # ── Main loop ──────────────────────────────────────────────────────────────
 
-def run(cfg: Dict[str, Any]) -> None:    """Start the main trading loop.
+def run(cfg: Dict[str, Any]) -> None:
+    """Start the main trading loop.
 
     Args:
         cfg: Fully loaded configuration dictionary.
